@@ -1,36 +1,110 @@
 name: "Rust Setup"
-description: "A simple GitHub Action that prints a greeting"
+description: "Setup Rust toolchain with cargo registry and build caching"
 author: "Jimmie Fulton <jimmie.fulton@gmail.com>"
 
 # Define the inputs for this action
 inputs:
-  who-to-greet:
-    description: "Who to greet"
-    required: true
-    default: "World"
-  message:
-    description: "Custom message to include"
+  toolchain:
+    description: "Rust toolchain version (stable, beta, nightly, or specific version)"
     required: false
-    default: "Hello"
+    default: "stable"
+  components:
+    description: "Comma-separated list of components to install (e.g., clippy, rustfmt)"
+    required: false
+    default: ""
+  targets:
+    description: "Comma-separated list of targets to install (e.g., wasm32-unknown-unknown)"
+    required: false
+    default: ""
+  cache:
+    description: "Enable cargo registry and target caching"
+    required: false
+    default: "true"
+  cache-key-suffix:
+    description: "Additional suffix for cache key"
+    required: false
+    default: ""
+  install-dependencies:
+    description: "Run cargo fetch to pre-cache dependencies"
+    required: false
+    default: "false"
+  working-directory:
+    description: "Working directory for cargo commands"
+    required: false
+    default: "."
 
 # Define the outputs for this action
 outputs:
-  time:
-    description: "The time we greeted you"
-    value: ${{ steps.hello.outputs.time }}
+  rustc-version:
+    description: "The installed rustc version"
+    value: ${{ steps.rustc-version.outputs.version }}
+  cargo-version:
+    description: "The installed cargo version"
+    value: ${{ steps.cargo-version.outputs.version }}
+  cache-hit:
+    description: "Whether the cargo cache was hit"
+    value: ${{ steps.cargo-cache.outputs.cache-hit }}
 
 # Define the runs configuration
 runs:
   using: "composite"
   steps:
-    - name: Hello step
-      id: hello
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: ${{ inputs.components }}
+        targets: ${{ inputs.targets }}
+
+    - name: Get rustc version
+      id: rustc-version
       shell: bash
       run: |
-        echo "${{ inputs.message }}, ${{ inputs.who-to-greet }}!"
-        echo "time=$(date)" >> $GITHUB_OUTPUT
+        VERSION=$(rustc --version | cut -d' ' -f2)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Rustc version: $VERSION"
+
+    - name: Get cargo version
+      id: cargo-version
+      shell: bash
+      run: |
+        VERSION=$(cargo --version | cut -d' ' -f2)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Cargo version: $VERSION"
+
+    - name: Cache cargo registry
+      if: inputs.cache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}${{ inputs.cache-key-suffix && format('-{0}', inputs.cache-key-suffix) || '' }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+
+    - name: Cache cargo target directory
+      id: cargo-cache
+      if: inputs.cache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ${{ inputs.working-directory }}/target
+        key: ${{ runner.os }}-cargo-target-${{ inputs.toolchain }}-${{ hashFiles('**/Cargo.lock') }}${{ inputs.cache-key-suffix && format('-{0}', inputs.cache-key-suffix) || '' }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-target-${{ inputs.toolchain }}-
+          ${{ runner.os }}-cargo-target-
+
+    - name: Fetch dependencies
+      if: inputs.install-dependencies == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "::group::Fetching Dependencies"
+        cargo fetch
+        echo "::endgroup::"
 
 # Define the branding for the action in the GitHub Marketplace
 branding:
-  icon: "award"
-  color: "blue"
+  icon: "package"
+  color: "orange"
