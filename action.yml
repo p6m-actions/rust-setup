@@ -72,28 +72,14 @@ runs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Cargo version: $VERSION"
 
-    - name: Cache cargo registry
-      if: inputs.cache == 'true'
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}${{ inputs.cache-key-suffix && format('-{0}', inputs.cache-key-suffix) || '' }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-registry-
-
-    - name: Cache cargo target directory
+    - name: Cache Rust dependencies and build artifacts
       id: cargo-cache
       if: inputs.cache == 'true'
-      uses: actions/cache@v4
+      uses: Swatinem/rust-cache@v2
       with:
-        path: ${{ inputs.working-directory }}/target
-        key: ${{ runner.os }}-cargo-target-${{ inputs.toolchain }}-${{ hashFiles('**/Cargo.lock') }}${{ inputs.cache-key-suffix && format('-{0}', inputs.cache-key-suffix) || '' }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-target-${{ inputs.toolchain }}-
-          ${{ runner.os }}-cargo-target-
+        workspaces: ${{ inputs.working-directory }}
+        cache-on-failure: true
+        key: ${{ inputs.cache-key-suffix }}
 
     - name: Fetch dependencies
       if: inputs.install-dependencies == 'true'
